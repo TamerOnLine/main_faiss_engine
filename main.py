@@ -1,58 +1,45 @@
-import logging
-from pathlib import Path
-from agents.agent import Agent
-from tools.faiss_engine_tool import FaissSearchEngine
+from langchain.agents import initialize_agent, AgentType
+from langchain.tools import Tool
+from langchain_ollama import OllamaLLM
+import requests
+from bs4 import BeautifulSoup
+from langchain.tools import Tool
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+def scrape_webpage(url: str) -> str:
 
-# Define the path for the PDF folder
-BASE_DIR = Path(__file__).resolve().parent
-PDF_FOLDER = BASE_DIR / "data" / "pdf"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    response = requests.get(url, headers=headers, timeout=5)
+    response.raise_for_status()
 
-def main() -> None:
-    """Runs an interactive search session using the enhanced Agent with FAISS."""
-    logging.info("Initializing Agent...")
-    agent = Agent()
+    soup = BeautifulSoup(response.text, "html.parser")
+    paragraphs = soup.find_all("p")
+    text_content = "\n".join([p.get_text() for p in paragraphs if p.get_text()])
 
-    # Initialize FAISS engine
-    logging.info("Checking for new PDFs to load into FAISS...")
-    engine = FaissSearchEngine()
+    return text_content[:5000] + "..." if len(text_content) > 5000 else text_content
+    
+web_scraper_tool = Tool(
+    name="WebScraper",
+    func=scrape_webpage,
+    description="Scrapes webpage content and extracts text data.",
+    return_direct=True,
+)
 
-    # Ensure the folder exists
-    if not PDF_FOLDER.exists():
-        logging.warning("PDF folder does not exist. Creating it now...")
-        PDF_FOLDER.mkdir(parents=True, exist_ok=True)
+llm = OllamaLLM(model="llama3.2")
+   
+agent = initialize_agent(
+    tools=[web_scraper_tool],
+    llm=llm,
+    agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+    verbose=True,
+    allowed_tools=[],
+    handle_parsing_errors=True,
+    )  
 
-    # Get list of PDFs
-    pdf_files = list(PDF_FOLDER.glob("*.pdf"))
 
-    if pdf_files:
-        logging.info(f"Found {len(pdf_files)} PDF files. Loading into FAISS...")
-        pdf_data = engine.load_data(str(PDF_FOLDER))
-        engine.update_index(pdf_data)
-        logging.info("FAISS index updated successfully.")
+def process(query):
 
-        # **عرض بعض البيانات المخزنة في FAISS لمعرفة محتوى البحث**
-        logging.info("\n🔍 **Sample data from FAISS index:**")
-        for i, chunk in enumerate(engine.chunks_list[:5]):  # عرض 5 عينات فقط
-            logging.info(f"{i+1}. {chunk[:300]}...")  # عرض أول 300 حرف فقط
-    else:
-        logging.warning("No PDF files found. Please add documents to improve search results.")
-
-    while True:
-        query_text = input("\nEnter search text (or type 'exit' to quit): ").strip()
-
-        if query_text.lower() == "exit":
-            logging.info("Session terminated.")
-            break
-
-        if not query_text:
-            logging.warning("Warning: You cannot enter an empty text. Please try again.")
-            continue
-
-        response = agent.process_query(query_text)
-        print(response)
-
-if __name__ == "__main__":
-    main()
+    print(f"Processing query: {query}")
+    result = agent.invoke(query)
+    response = result.get("output", "No response")
+    print(f"Response: {response}")
+    return response

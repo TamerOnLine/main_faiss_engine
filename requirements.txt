@@ -1,24 +1,16 @@
 pytest
-python-dotenv
 requests
 langchain-community
 langchain-ollama
 langchain_ollama
-
 faiss-cpu
 numpy
-
-reportlab
-nltk
-
-pymupdf
-
 sentence-transformers
+beautifulsoup4
+nltk
+validators
 
 
-PyPDF2
 
-faker
 
-pdfplumber
 
